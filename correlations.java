@@ -61,8 +61,8 @@ public class correlations {
             return;
          }
          for (i = 0; i < mScores.size(); i++) {
-            mSum += mScores.get(i) * count;
-            wSum += wScores.get(i) * count;
+            mSum += mScores.get(i);
+            wSum += wScores.get(i);
             context.write(key, new Text("O>" + mScores.get(i) + ">" + wScores.get(i))); 
          }
          mSum /= count;
