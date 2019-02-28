@@ -112,8 +112,8 @@ public class correlation {
          int i;
 
          for (i = 0; i < count; i++) {
-            muRum += rums.get(i) * count;
-            muVodka += vodkas.get(i) * count;
+            muRum += rums.get(i);
+            muVodka += vodkas.get(i);
          }
 
          muRum /= count;
