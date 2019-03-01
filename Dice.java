@@ -101,6 +101,7 @@ public class Dice {
                queue.add(current);
             }
          }
+         queueMap.put(fileName, queue);
       }
 
       @Override
@@ -143,7 +144,7 @@ public class Dice {
          }
 
          while(!queue.isEmpty())
-            context.write(new Text(queue.poll().getWord()), new Text(""));
+            context.write(new Text(queue.poll().getWord()), new Text(key));
       }
 
       @Override
