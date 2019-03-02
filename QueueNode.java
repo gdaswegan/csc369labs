@@ -9,7 +9,9 @@ public class QueueNode implements Comparable<QueueNode> {
 
    @Override
    public int compareTo(QueueNode o) {
-      return weight.compareTo(o.weight);
+      return weight.compareTo(o.weight) == 0
+            ? word.compareTo(o.word)
+            : weight.compareTo(o.weight);
    }
 
    public int getWeight () { return weight; }
