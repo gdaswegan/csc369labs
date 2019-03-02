@@ -22,6 +22,7 @@ import java.io.File;
 import java.util.*;
 import java.lang.Math;
 import java.io.IOException;
+import java.util.stream.Collectors;
 
 public class Dice {
    public static boolean isStopword (String w) {
@@ -146,12 +147,90 @@ public class Dice {
          while(!queue.isEmpty())
             context.write(new Text(queue.poll().getWord()), new Text(key));
       }
+   }
+   public static class DiceMapper
+         extends Mapper<LongWritable, Text, Text, Text>
+   {
+      HashMap<String, LinkedList<String>> listMap;
+      @Override
+      protected void setup(Context context) throws IOException, InterruptedException {
+         super.setup(context);
+         listMap = new HashMap<>();
+      }
 
       @Override
-      protected void cleanup(Context context)
-         throws IOException, InterruptedException
+      public void map(LongWritable key, Text value, Context context)
+            throws IOException, InterruptedException
       {
+         String[] line = value.toString().split("\\s");
+         String word = line[0];
+         String fileName = line[1];
+         LinkedList<String> list;
+
+         if(listMap.containsKey(fileName)) {
+            list = listMap.get(fileName);
+         } else {
+            list = new LinkedList<>();
+         }
+         list.add(word);
+
+         listMap.put(fileName, list);
+      }
+
+      @Override
+      protected void cleanup(Context context) throws IOException, InterruptedException {
          super.cleanup(context);
+         Deque<Map.Entry<String, LinkedList<String>>> queue =
+               new ArrayDeque<>(listMap.entrySet());
+
+         while(!queue.isEmpty()){
+            Map.Entry<String, LinkedList<String>> e = queue.pop();
+
+            String[] pathToFile = e.getKey().split("/");
+            String fileName = pathToFile[pathToFile.length-1];
+
+            LinkedList<String> words = e.getValue();
+
+            for(Map.Entry<String, LinkedList<String>> entry: queue){
+               String [] pathToFile1 = entry.getKey().split("/");
+               String fileName1 = pathToFile1[pathToFile1.length-1];
+
+               LinkedList<String> words1 =  entry.getValue();
+
+               int numCommonWords = words.stream()
+                     .filter(words1::contains)
+                     .collect(Collectors.toList())
+                     .size();
+
+               context.write(
+                     new Text(fileName + ">>" + fileName1),
+                     new Text(Integer.toString(numCommonWords)));
+            }
+         }
+      }
+
+   }
+
+   public static class DiceReducer
+         extends Reducer<Text, Text, Text, Text>{
+      PriorityQueue<QueueNode> queue;
+
+      @Override
+      protected void reduce(Text key, Iterable<Text> values, Context context)
+            throws IOException, InterruptedException
+      {
+         String[] documents = key.toString().split(">>");
+         String doc1 = documents[0];
+         String doc2 = documents[1];
+         int commonWords = 0;
+         for(Text value : values){
+            commonWords += Integer.valueOf(value.toString());
+         }
+         double diceCoef = 2 * commonWords /(200d);
+
+         context.write(
+               new Text (doc1 + " " + doc2),
+               new Text(Double.toString(diceCoef)));
       }
    }
 
@@ -161,6 +240,15 @@ public class Dice {
 
       FileInputFormat.addInputPath(wordCountJob, new Path("/data/Guttenberg", "11-0.txt"));
       FileInputFormat.addInputPath(wordCountJob, new Path("/data/Guttenberg", "1342-0.txt"));
+      FileInputFormat.addInputPath(wordCountJob, new Path("/data/Guttenberg", "1952-0.txt"));
+      FileInputFormat.addInputPath(wordCountJob, new Path("/data/Guttenberg", "219-0.txt"));
+      FileInputFormat.addInputPath(wordCountJob, new Path("/data/Guttenberg", "2701-0.txt"));
+      FileInputFormat.addInputPath(wordCountJob, new Path("/data/Guttenberg", "76-0.txt"));
+      FileInputFormat.addInputPath(wordCountJob, new Path("/data/Guttenberg", "84-0.txt"));
+      FileInputFormat.addInputPath(wordCountJob, new Path("/data/Guttenberg", "98-0.txt"));
+      FileInputFormat.addInputPath(wordCountJob, new Path("/data/Guttenberg", "pg1080.txt"));
+      FileInputFormat.addInputPath(wordCountJob, new Path("/data/Guttenberg", "pg1661.txt"));
+      FileInputFormat.addInputPath(wordCountJob, new Path("/data/Guttenberg", "pg844.txt"));
 
       FileOutputFormat.setOutputPath(wordCountJob, new Path("./Lab06/Prog3", "counts"));
 
@@ -181,8 +269,18 @@ public class Dice {
       topKJob.setReducerClass(TopKReducer.class);
       topKJob.setOutputKeyClass(Text.class);
       topKJob.setOutputValueClass(Text.class);
-
       topKJob.setJobName("Dice");
-      System.exit(topKJob.waitForCompletion(true) ? 0 : 1);
+      topKJob.waitForCompletion(true);
+
+      Job diceJob = Job.getInstance();
+      diceJob.setJarByClass(Dice.class);
+      FileInputFormat.addInputPath(diceJob, new Path("./Lab06/Prog3/topK", "part-r-00000"));
+      FileOutputFormat.setOutputPath(diceJob, new Path("./Lab06/Prog3", "dice"));
+      diceJob.setMapperClass(DiceMapper.class);
+      diceJob.setReducerClass(DiceReducer.class);
+      diceJob.setOutputKeyClass(Text.class);
+      diceJob.setOutputValueClass(Text.class);
+      diceJob.setJobName("Dice");
+      System.exit(diceJob.waitForCompletion(true) ? 0 : 1);
    }
 }
