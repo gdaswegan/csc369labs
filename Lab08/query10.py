@@ -2,6 +2,7 @@
 # CSC 369
 # March 18, 2019
 
+from pyspark.context import SparkContext
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType
 from pyspark.sql.types import StructField
@@ -9,6 +10,7 @@ from pyspark.sql.types import StringType
 from pyspark.sql.types import IntegerType
 from pyspark.sql.types import DoubleType
 spark = SparkSession.builder.getOrCreate();
+sc = SparkContext.getOrCreate()
 
 CID = 0
 LASTNAME = 1
@@ -151,5 +153,6 @@ grouped = joined.groupBy("Flavor", "Food")
 counted = grouped.count().withColumnRenamed("count", "NumSold")
 
 output = counted.sort(counted.NumSold.desc()).take(1)
+actualOut = sc.parallelize(output)
+actualOut.saveAsTextFile("Lab08/query10")
 
-print(output)

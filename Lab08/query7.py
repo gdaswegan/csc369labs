@@ -162,5 +162,4 @@ counts = datesGrouped.count().filter("count > 10")
 
 countsRdd = counts.rdd.map(list)
 dates = countsRdd.map(getDates).sortBy(lambda x: x).map(getStrings)
-
-print(dates.collect())
+dates.saveAsTextFile("Lab08/query7")

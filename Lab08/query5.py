@@ -180,6 +180,4 @@ dateList = almetaDates.union(gongolaisDates).distinct()
 datesDT = dateList.map(convertToDT)
 sortedDates = datesDT.sortBy(lambda x: x)
 output = sortedDates.map(convertFromDT)
-
-print(output.collect())
-#output the file
+output.saveAsTextFile("Lab08/query5")

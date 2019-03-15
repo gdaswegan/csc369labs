@@ -165,5 +165,4 @@ multiplePurchases = counted.filter("NumPurchases > 1")
 dates = multiplePurchases.groupBy("Date").count().rdd.map(list).map(rCount)\
          .distinct().filter(removeDates)
 output = dates.sortBy(lambda x: x).map(toString)
-
-print(output.collect())
+output.saveAsTextFile("Lab08/query3")

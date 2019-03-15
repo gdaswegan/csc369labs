@@ -155,4 +155,4 @@ summed = grouped.sum("Price").withColumnRenamed("sum(Price)", "TotalSpent")
 customers = summed.sort(summed.TotalSpent.desc())
 
 output = customers.rdd.map(list)
-print(output.collect())
+output.saveAsTextFile("Lab08/query8")
