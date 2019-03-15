@@ -1,0 +1,18 @@
+#!/bin/bash
+if [ -z "$1" ] 
+   then
+      echo "No arg provded"
+      echo "Please provide the name of a file to compile for Hadoop."
+      exit
+fi
+
+if [ -z "$HADOOP_CLASSPATH" ]
+   then
+      echo "Exporting Hadoop Classpath"
+      export HADOOP_CLASSPATH=./lib/org.json-20120521.jar:./lib/json-mapreduce-1.0.jar
+fi
+
+javac -classpath "./lib/*" $1.java
+jar cvf $1.jar *.class
+rm *.class
+hadoop jar $1.jar $1 -libjars ./lib/org.json-20120521.jar,./lib/json-mapreduce-1.0.jar
