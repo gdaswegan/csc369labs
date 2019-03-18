@@ -2,7 +2,8 @@
 # CSC 369
 # March 4, 2019
 
-import math
+import sys
+from pprint import pprint as pretty
 
 from pyspark.sql import SparkSession
 from pyspark.context import SparkContext
@@ -10,7 +11,6 @@ from pyspark.sql.types import StructType
 from pyspark.sql.types import StructField
 from pyspark.sql.types import DoubleType
 from pyspark.sql.functions import monotonically_increasing_id
-from pyspark.sql.functions import mean as _mean, stddev_pop as _stddev, col
 spark = SparkSession.builder.getOrCreate()
 sc = SparkContext.getOrCreate()
 
@@ -44,78 +44,81 @@ ALCOHOL = 10 #"_c10"
 QUALITY = 11 #"_c11"
 ID = 12
 PAIR = 13
-STD_OFFSET = 11
+
+ROW = 0
+PAIRED = 0
+DIFF = 1
+
+def reKey(val):
+   return (val[ID], val[QUALITY])
+
+def fixData(val):
+   string = val[1]
+   string = string[string.index("[") + 1 : string.index("]")]
+   strings = string.split(",")
+   thisId = int(strings[0])
+   paired = int(strings[1])
+   distance = float(strings[2])
+   return (thisId, [paired, distance])
+
+def getNearest(val):
+   global k_b
+   k = k_b.value
+   largest = []
+   for pair in val[1]:
+      if (len(largest) < k):
+         largest.append(pair)
+      else:
+         maxPair = 0
+         for compare in range(len(largest)):
+            if (largest[compare][DIFF] > largest[maxPair][DIFF]):
+               maxPair = compare
+         if pair[DIFF] < largest[maxPair][DIFF]:
+            largest[maxPair][PAIRED] = pair[PAIRED]
+            largest[maxPair][DIFF] = pair[DIFF]
+   
+   rows = []
+   for item in largest:
+      rows.append(item[PAIRED])
+   return (val[0], rows)
 
 temp = spark.read.format("csv").schema(schema).options(sep=",", header=True).load(filename)
-wine = temp.withColumn("id", monotonically_increasing_id())
+wine = temp.withColumn("id", monotonically_increasing_id()).rdd.map(list).map(reKey)
 
-# d_raw data
-def equalID(val):
-   if val[ID] == val[PAIR + ID]:
-      return False
-   return True
+k = int(sys.argv[1])
+temp = sc.newAPIHadoopFile(sys.argv[2], "org.apache.hadoop.mapreduce.lib.input.TextInputFormat",
+                           "org.apache.hadoop.io.LongWritable", "org.apache.hadoop.io.Text")
+distances = temp.map(fixData).groupByKey()
+k_b = sc.broadcast(k)
+nearest = distances.map(getNearest)
 
-def findDistance(val):
-   sumVal = 0
-   for i in range(PAIR - 3):
-      sumVal += (val[i] - val[PAIR + i]) * (val[i] - val[PAIR + i])
-   sumVal = math.sqrt(sumVal)
-   return [val[ID], val[ID + PAIR], sumVal]
+topKAndQuality = nearest.join(wine).sortBy(lambda x : x[0])
 
-joined = wine.crossJoin(wine)
-pairs = joined.rdd.map(list)
+wineList = topKAndQuality.collect() #format [(id, ([topk], quality))...]
 
-d_raw = pairs.filter(equalID).map(findDistance)
-d_raw.saveAsTextFile("Lab08/d_raw")
+confusion = [[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], 
+             [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0]]
+base = 3
 
+output = []
+correct = 0
+for row in wineList:
+   qualities = {'3.0': 0, '4.0': 0, '5.0': 0, '6.0': 0, '7.0': 0, '8.0': 0}
+   for paired in row[1][0]:
+      qualities[str(wineList[paired][1][1])] += 1
+   maxKey = "3.0"
+   for key in qualities:
+      if qualities[maxKey] < qualities[key]:
+         maxKey = key
+   quality = int(float(maxKey))
+   pretty(quality)
+   if quality == int(row[1][1]):
+      correct += 1
+   confusion[quality - base][int(row[1][1]) - base] += 1
+   output.append([row[0], quality, row[1][1]])
 
-# d_std data
-def makeStandard(val):
-   global stats_b
-   stats = stats_b.value[0]
-   newVal = []
-   for i in range(PAIR - 2):
-      newVal.append( (val[i] - stats[i]) / stats[i + STD_OFFSET] )
-   newVal.append(val[QUALITY])
-   newVal.append(val[ID])
-   return newVal
-
-def addLst(val):
-   return val[0] + val[1]
-
-stats = wine.select(
-   _mean(col("fixed acidity")).alias("fa_mean"),
-   _mean(col("volatile acidity")).alias("va_mean"),
-   _mean(col("citric acid")).alias("ca_mean"),
-   _mean(col("residual sugar")).alias("rs_mean"),
-   _mean(col("chlorides")).alias("c_mean"),
-   _mean(col("free sulfur dioxide")).alias("fsd_mean"),
-   _mean(col("total sulfur dioxide")).alias("tsd_mean"),
-   _mean(col("density")).alias("d_mean"),
-   _mean(col("pH")).alias("ph_mean"),
-   _mean(col("sulfates")).alias("s_mean"),
-   _mean(col("alcohol")).alias("a_mean"),
-   _stddev(col("fixed acidity")).alias("fa_std"),
-   _stddev(col("volatile acidity")).alias("va_std"),
-   _stddev(col("citric acid")).alias("ca_std"),
-   _stddev(col("residual sugar")).alias("rs_std"),
-   _stddev(col("chlorides")).alias("c_std"),
-   _stddev(col("free sulfur dioxide")).alias("fsd_std"),
-   _stddev(col("total sulfur dioxide")).alias("tsd_std"),
-   _stddev(col("density")).alias("d_std"),
-   _stddev(col("pH")).alias("ph_std"),
-   _stddev(col("sulfates")).alias("s_std"),
-   _stddev(col("alcohol")).alias("a_std")
-)
-
-stats = stats.rdd.map(list).collect()
-stats_b = sc.broadcast(stats)
-
-wineRdd = wine.rdd.map(list)
-standardized = wineRdd.map(makeStandard)
-
-joined = standardized.cartesian(standardized)
-pairs = joined.map(list).map(addLst)
-
-d_std = pairs.filter(equalID).map(findDistance).sortBy(lambda x: x[0])
-d_std.saveAsTextFile("Lab08/d_std")
+pretty(float(correct)/len(wineList))
+pretty(confusion)
+pretty(output)
+#rddOut = sc.parallelize(output)
+#rddOut.saveAsTextFile("Lab08/knn")
